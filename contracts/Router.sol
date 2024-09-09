@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "./Factory.sol";
 import "./Pair.sol";
-// import "./IERC20.sol";
 import './interfaces/IWETH.sol';
 
 contract Router {
@@ -20,6 +19,10 @@ contract Router {
         WETH = _WETH;
     }
 
+     receive() external payable {
+        assert(msg.sender == WETH); // only accept ETH via fallback from the WETH contract
+    }
+
     function addLiquidity(
         address tokenA,
         address tokenB,
@@ -28,7 +31,10 @@ contract Router {
         uint256 amountAMin,
         uint256 amountBMin,
         address to
-    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
+    ) 
+        external 
+        returns (uint256 amountA, uint256 amountB, uint256 liquidity) 
+    {
         if (Factory(factory).getPair(tokenA, tokenB) == address(0)) {
             Factory(factory).createPair(tokenA, tokenB);
         }
@@ -46,7 +52,12 @@ contract Router {
         uint amountETHMin,
         address to,
         uint deadline
-    ) external payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
+    ) 
+        external 
+        payable 
+        ensure(deadline) 
+        returns (uint amountToken, uint amountETH, uint liquidity) 
+    {
          if (Factory(factory).getPair(token, WETH) == address(0)) {
             Factory(factory).createPair(token, WETH);
         }
@@ -77,7 +88,10 @@ contract Router {
         uint256 amountBDesired,
         uint256 amountAMin,
         uint256 amountBMin
-    ) internal returns (uint256 amountA, uint256 amountB) {
+    ) 
+        internal 
+        returns (uint256 amountA, uint256 amountB) 
+    {
         (uint256 reserveA, uint256 reserveB) = Pair(Factory(factory).getPair(tokenA, tokenB)).getReserves();
         if (reserveA == 0 && reserveB == 0) {
             (amountA, amountB) = (amountADesired, amountBDesired);
@@ -102,11 +116,37 @@ contract Router {
         uint256 amountAMin,
         uint256 amountBMin,
         address to
-    ) public returns (uint256 amountA, uint256 amountB) {
+    ) 
+        public 
+        returns (uint256 amountA, uint256 amountB) 
+    {
         address pair = Factory(factory).getPair(tokenA, tokenB);
         // Pair(pair).transferFrom(msg.sender, pair, liquidity);
         IERC20(pair).transferFrom(msg.sender, pair, liquidity);
-        (uint256 amount0, uint256 amount1) = Pair(pair).burn(to);
+        (uint256 amount0, uint256 amount1) = Pair(pair).burn(to, address(0), false);
+        (address token0,) = sortTokens(tokenA, tokenB);
+        (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
+        require(amountA >= amountAMin, "Router: INSUFFICIENT_A_AMOUNT");
+        require(amountB >= amountBMin, "Router: INSUFFICIENT_B_AMOUNT");
+    }
+
+    function _removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        address router,
+        bool isEth
+    ) 
+        private 
+        returns (uint256 amountA, uint256 amountB) 
+    {
+        address pair = Factory(factory).getPair(tokenA, tokenB);
+        // Pair(pair).transferFrom(msg.sender, pair, liquidity);
+        IERC20(pair).transferFrom(msg.sender, pair, liquidity);
+        (uint256 amount0, uint256 amount1) = Pair(pair).burn(to, router, isEth);
         (address token0,) = sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
         require(amountA >= amountAMin, "Router: INSUFFICIENT_A_AMOUNT");
@@ -120,20 +160,32 @@ contract Router {
         uint amountETHMin,
         address payable to,
         uint deadline
-    ) public  ensure(deadline) returns (uint amountToken, uint amountETH) {
-        (amountToken, amountETH) = removeLiquidity( 
+    ) 
+        external 
+        ensure(deadline) 
+        returns (uint amountToken, uint amountETH) 
+    {
+        (amountToken, amountETH) = _removeLiquidity( 
             token, 
             WETH, 
             liquidity, 
             amountTokenMin, 
-            amountETHMin, 
-            address(this)
+            amountETHMin,
+            to, 
+            address(this),
+            true
         );
         // TransferHelper.safeTransfer(token, to, amountToken);
-        IERC20(token).transfer(to, amountToken);
-        IWETH(WETH).withdraw(amountETH);
-        // TransferHelper.safeTransferETH(to, amountETH);
-        to.transfer(amountETH);
+
+        uint256 routerTkonBlance = IERC20(token).balanceOf(address(this));
+        // IERC20(token).transfer(to, amountToken);
+        IERC20(token).transfer(to, routerTkonBlance);
+
+        uint256 routerWethBalance = IWETH(WETH).balanceOf(address(this));
+        require(routerWethBalance > 0, "Router: Insufficient WETH balance");
+        IWETH(WETH).withdraw(routerWethBalance);
+        // // TransferHelper.safeTransferETH(to, amountETH);
+        to.transfer(routerWethBalance);
     }
 
 
@@ -142,7 +194,10 @@ contract Router {
         uint256 amountOutMin,
         address[] calldata path,
         address to
-    ) external returns (uint256[] memory amounts) {
+    ) 
+        external 
+        returns (uint256[] memory amounts) 
+    {
         amounts = getAmountsOut(amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "Router: INSUFFICIENT_OUTPUT_AMOUNT");
         // IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
@@ -150,7 +205,12 @@ contract Router {
         _swap(amounts, path, to);
     }
 
-    function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
+    function swapExactETHForTokens(
+        uint amountOutMin, 
+        address[] calldata path, 
+        address to, 
+        uint deadline
+    )
         external
         payable
         ensure(deadline)
@@ -166,7 +226,13 @@ contract Router {
         _swap(amounts, path, to);
     }
 
-    function swapTokensForExactETH(uint amountIn, uint amountOutMin, address[] calldata path, address payable to, uint deadline)
+    function swapTokensForExactETH(
+        uint amountIn, 
+        uint amountOutMin, 
+        address[] calldata path, 
+        address payable to, 
+        uint deadline
+    )
         external
         ensure(deadline)
         returns (uint[] memory amounts)
@@ -177,6 +243,8 @@ contract Router {
         // require(amounts[0] <= amountInMax, 'UniswapV2Router: EXCESSIVE_INPUT_AMOUNT');
         require(amounts[amounts.length - 1] >= amountOutMin, "Router: INSUFFICIENT_OUTPUT_AMOUNT");
         // TransferHelper.safeTransferFrom(path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]);
+
+
         IERC20(path[0]).transferFrom(msg.sender, Factory(factory).getPair(path[0], path[1]), amountIn);
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
@@ -185,7 +253,13 @@ contract Router {
     }
     
 
-    function _swap(uint256[] memory amounts, address[] memory path, address _to) internal {
+    function _swap(
+        uint256[] memory amounts, 
+        address[] memory path, 
+        address _to
+    ) 
+        internal 
+    {
         for (uint256 i; i < path.length - 1; i++) {
             address input = path[i];
             address output = path[i + 1];
@@ -197,7 +271,14 @@ contract Router {
         }
     }
 
-    function getAmountsOut(uint256 amountIn, address[] memory path) public view returns (uint256[] memory amounts) {
+    function getAmountsOut(
+        uint256 amountIn, 
+        address[] memory path
+    ) 
+        public 
+        view 
+        returns (uint256[] memory amounts) 
+    {
         require(path.length >= 2, "Router: INVALID_PATH");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
@@ -207,7 +288,15 @@ contract Router {
         }
     }
 
-    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) public pure returns (uint256 amountOut) {
+    function getAmountOut(
+        uint256 amountIn, 
+        uint256 reserveIn, 
+        uint256 reserveOut
+    ) 
+        public
+        pure 
+        returns (uint256 amountOut) 
+    {
         require(amountIn > 0, "Router: INSUFFICIENT_INPUT_AMOUNT");
         require(reserveIn > 0 && reserveOut > 0, "Router: INSUFFICIENT_LIQUIDITY");
         uint256 amountInWithFee = amountIn * 997;
@@ -216,7 +305,14 @@ contract Router {
         amountOut = numerator / denominator;
     }
 
-    function sortTokens(address tokenA, address tokenB) public pure returns (address token0, address token1) {
+    function sortTokens(
+        address tokenA, 
+        address tokenB
+    ) 
+        public 
+        pure 
+        returns (address token0, address token1) 
+    {
         require(tokenA != tokenB, "Router: IDENTICAL_ADDRESSES");
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
     }

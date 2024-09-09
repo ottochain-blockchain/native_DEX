@@ -20,7 +20,13 @@ contract Factory {
         return allPairs.length;
     }
 
-    function createPair(address tokenA, address tokenB) external returns (address pair) {
+    function createPair(
+        address tokenA, 
+        address tokenB
+    ) 
+        external 
+        returns (address pair) 
+    {
         require(tokenA != tokenB, "Factory: IDENTICAL_ADDRESSES");
         require(getPair[tokenA][tokenB] == address(0), "Factory: PAIR_EXISTS");
         
@@ -48,25 +54,3 @@ contract Factory {
         feeToSetter = _feeToSetter;
     }
 }
-
-// contract Factory {
-//     mapping(address => mapping(address => address)) public getPair;
-//     address[] public allPairs;
-
-//     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);
-
-//     function createPair(address tokenA, address tokenB) external returns (address pair) {
-//         require(tokenA != tokenB, "Factory: IDENTICAL_ADDRESSES");
-//         require(getPair[tokenA][tokenB] == address(0), "Factory: PAIR_EXISTS");
-
-//         Pair newPair = new Pair();
-//         pair = address(newPair);
-
-//         newPair.initialize(tokenA, tokenB);
-//         getPair[tokenA][tokenB] = pair;
-//         getPair[tokenB][tokenA] = pair;
-//         allPairs.push(pair);
-
-//         emit PairCreated(tokenA, tokenB, pair, allPairs.length);
-//     }
-// }
